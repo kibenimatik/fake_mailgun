@@ -7,6 +7,6 @@ guard 'rack' do
   watch(%r{^(config|app|api)/.*})
 end
 
-guard 'sidekiq', :require => './sidekiq_helper.rb' do
+guard 'sidekiq', :require => './sidekiq_helper.rb', :concurrency => 3 do
   watch('app/callbacks.rb')
 end

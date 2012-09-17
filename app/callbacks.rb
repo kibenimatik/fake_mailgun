@@ -2,7 +2,7 @@ require 'net/http'
 class Callbacks
   include Sidekiq::Worker
 
-  DELIVERED     = 0.9998
+  DELIVERED     = 0.998
   OPENED        = 0.9
   UNIQ_OPENED   = 0.7
   CLICKED       = 0.48
@@ -14,41 +14,42 @@ class Callbacks
     @sample = {'my-var' => params['v:my-var']}
     @links = params['html'].scan(/href=[\'"]?([https?][^\'"]*)[\'"]?/o).flatten.compact
 
-    trigger! delivered do |params|
+    trigger! :delivered do |params|
       params.merge!({'event' => 'delivered'})
     end
 
-    trigger! bounced do |params|
+    trigger! :bounced do |params|
       params.merge!({'event' => 'bounced'})
     end
 
-    trigger! dropped do |params|
+    trigger! :dropped do |params|
       params.merge!({'event' => 'dropped', 'reason' => 'hardfail'})
     end
 
-    trigger! opened do |params|
+    trigger! :opened do |params|
       params.merge!({'event' => 'opened'})
     end
 
-    trigger! clicked do |params|
+    trigger! :clicked do |params|
       params.merge!({'event' => 'clicked', 'url' => @links.shuffle.first})
     end
 
-    trigger! complained do |params|
+    trigger! :complained do |params|
       params.merge!({'event' => 'complained'})
     end
   end
 
   protected
-  def trigger!(recipients, &block)
+  def trigger!(recipient_type, &block)
+    recipients = send(recipient_type)
     recipients.each_slice(100) do |recipients_slice|
       recipients_slice.each do |recipient|
         data = @sample.merge({'recipient' => recipient, 'timestamp' => Time.now.to_i})
         yield data
         res = Net::HTTP.post_form(callback_url, data)
       end
-      sleep 5
     end
+    puts "** #{recipients.count} #{recipient_type}"
   end
 
   def callback_url
@@ -69,11 +70,11 @@ class Callbacks
   end
 
   def bounced
-    @bounced ||= (@recipients - @delivered).size > 0 ? @recipients - @delivered - @dropped : []
+    @bounced ||= (@recipients - delivered).size > 0 ? @recipients - delivered - dropped : []
   end
 
   def dropped
-    @dropped ||= (@recipients - @delivered).size > 0 ? [(@recipients - @delivered).shuffle.first] : []
+    @dropped ||= (@recipients - delivered).size > 0 ? [(@recipients - delivered).shuffle.first] : []
   end
 
   def opened
